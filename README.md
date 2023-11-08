@@ -1,6 +1,6 @@
 Hey there, tech enthusiasts and world changers! 👋🌍
 
-Welcome to Visual Ears - where our app doesn't just perform a function; it serves a mission to make communication universally visual and intuitive.
+Welcome to **Visual Ears** - where our app doesn't just perform a function; it serves a mission to make communication universally visual and intuitive.
 
  🚀 The Mission
 

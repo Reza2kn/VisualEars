@@ -1,0 +1,41 @@
+/* ============================================================
+   VisualEars — Base layer
+   Light, opt-in resets. Sets the warm canvas and large-by-default
+   type. RTL is first-class: use logical properties everywhere.
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:where(body) {
+  margin: 0;
+  background: var(--surface-canvas);
+  color: var(--text-body);
+  font: var(--type-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Persian / Arabic content: opt in by setting dir="rtl" + lang="fa".
+   The whole system uses logical properties so it mirrors cleanly. */
+:where([dir="rtl"]) {
+  text-align: start;
+}
+
+:where(h1, h2, h3, h4) {
+  font-family: var(--font-display);
+  font-weight: var(--weight-regular);
+  color: var(--text-strong);
+  line-height: var(--leading-tight);
+  margin: 0;
+}
+
+:where(:focus-visible) {
+  outline: none;
+  box-shadow: var(--shadow-glow);
+}
+
+::selection { background: var(--gold-200); color: var(--espresso-900); }
+
+/* Tabular numerals helper (useful for Persian/Latin numeral toggles) */
+.ve-tnum { font-variant-numeric: tabular-nums; }
+.ve-fa-digits { font-feature-settings: "ss01"; } /* Vazirmatn Farsi digits */

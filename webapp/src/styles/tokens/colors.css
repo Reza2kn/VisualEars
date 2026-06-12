@@ -1,0 +1,94 @@
+/* ============================================================
+   VisualEars — Color tokens
+   Warm, earthy Persian palette drawn directly from the brand
+   artwork: crimson termeh ground, espresso ear, saffron-gold
+   calligraphy. Sampled hexes anchor the scale.
+   ============================================================ */
+
+:root {
+  /* ---- Crimson / Brick (primary brand) ---- */
+  --crimson-50:  #FBEDE8;
+  --crimson-100: #F4D2C7;
+  --crimson-200: #E3A48E;
+  --crimson-300: #CF6F52;
+  --crimson-400: #B0492E;
+  --crimson-500: #8B2414;   /* primary */
+  --crimson-600: #6E1B0F;
+  --crimson-700: #4A1206;   /* sampled ground */
+  --crimson-800: #2E0B04;
+  --crimson-900: #1C0602;
+
+  /* ---- Saffron / Gold (accent — the calligraphy) ---- */
+  --gold-50:  #FCF4DF;
+  --gold-100: #F8E6B6;
+  --gold-200: #F0CF7C;
+  --gold-300: #EBC75C;   /* sampled bright calligraphy */
+  --gold-400: #DCA92F;
+  --gold-500: #C2871A;   /* accent */
+  --gold-600: #9A6712;
+  --gold-700: #6F490D;
+
+  /* ---- Espresso / Earth (deep neutrals, the ear interior) ---- */
+  --espresso-900: #1F0F08;
+  --espresso-800: #2E1A12;
+  --espresso-700: #3F1701;   /* sampled interior */
+  --espresso-600: #5A3826;
+  --espresso-500: #785441;
+
+  /* ---- Parchment / Cream (warm neutrals & surfaces) ---- */
+  --cream-50:  #FDF9F0;
+  --cream-100: #FBF3E2;   /* base canvas */
+  --cream-200: #F5EAD3;
+  --cream-300: #EBDABB;
+  --cream-400: #DAC39C;
+  --cream-500: #C2A87C;
+
+  /* ---- Supporting earth tones ---- */
+  --terracotta: #C56A3E;
+  --clay:       #A8553A;
+  --olive:      #7C7A4B;
+  --sage:       #9AA17A;
+  --pomegranate:#9E2B25;
+
+  /* ---- Semantic status ---- */
+  --positive: #5E7A3A;   /* olive-green */
+  --warning:  #C2871A;   /* gold */
+  --danger:   #9E2B25;   /* pomegranate */
+  --info:     #4A6E78;   /* muted teal-earth */
+
+  /* ============================================================
+     Semantic aliases — reference these in components, not the
+     raw scale. Light (parchment) is the default surface.
+     ============================================================ */
+
+  --surface-canvas:   var(--cream-100);
+  --surface-card:     var(--cream-50);
+  --surface-raised:   #FFFFFF;
+  --surface-sunken:   var(--cream-200);
+  --surface-inverse:  var(--espresso-800);
+  --surface-brand:    var(--crimson-500);
+  --surface-brand-deep: var(--crimson-700);
+  --surface-accent:   var(--gold-300);
+
+  --text-strong:   var(--espresso-900);
+  --text-body:     var(--espresso-800);
+  --text-muted:    var(--espresso-500);
+  --text-faint:    var(--cream-500);
+  --text-on-brand: var(--cream-50);
+  --text-on-accent:var(--espresso-900);
+  --text-brand:    var(--crimson-500);
+  --text-accent:   var(--gold-600);
+
+  --border-subtle: var(--cream-300);
+  --border-default:var(--cream-400);
+  --border-strong: var(--espresso-500);
+  --border-brand:  var(--crimson-500);
+  --border-accent: var(--gold-400);
+
+  --focus-ring:    var(--gold-400);
+
+  /* Decorative gradients pulled from the artwork */
+  --grad-ember: linear-gradient(135deg, var(--crimson-600) 0%, var(--crimson-800) 100%);
+  --grad-saffron: linear-gradient(135deg, var(--gold-300) 0%, var(--gold-500) 100%);
+  --grad-glow: radial-gradient(circle at 50% 40%, rgba(235,199,92,0.28) 0%, rgba(235,199,92,0) 60%); /* @kind color */
+}

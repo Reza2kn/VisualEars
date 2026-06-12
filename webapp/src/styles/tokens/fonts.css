@@ -1,0 +1,23 @@
+/* VisualEars webfonts — fully self-hosted, no CDN dependency.
+   Lalezar  : OFL, sourced from google/fonts on GitHub
+   Vazirmatn: OFL, sourced from rastikerdar/vazirmatn on GitHub
+   Binaries live in assets/fonts/ relative to the project root. */
+
+/* ------ Lalezar — rounded warm display (Arabic + Latin) ------ */
+@font-face {
+  font-family: 'Lalezar';
+  src: url('/assets/fonts/Lalezar-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ------ Vazirmatn — variable Persian/Arabic + Latin UI font ------ */
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/assets/fonts/Vazirmatn-wght-.woff2') format('woff2 supports variations'),
+       url('/assets/fonts/Vazirmatn-wght-.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}

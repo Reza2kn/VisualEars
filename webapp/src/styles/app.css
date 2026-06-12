@@ -1,0 +1,45 @@
+/* App-level layout on top of the design-system tokens. */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--surface-canvas);
+  overflow-x: clip; /* brand rule: never horizontally scrollable */
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes ve-caret-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.ve-caret {
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  background: var(--gold-500);
+  margin-inline-start: 6px;
+  vertical-align: middle;
+  animation: ve-caret-blink 1.1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ve-caret {
+    animation: none;
+  }
+}

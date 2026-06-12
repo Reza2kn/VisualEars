@@ -1,0 +1,14 @@
+{
+ "000_visualears_worst269_001.wav": {
+  "baseline_norm": "جن",
+  "candidate_norm": "جن"
+ },
+ "001_visualears_worst269_003.wav": {
+  "baseline_norm": "ی نس",
+  "candidate_norm": "ی نس"
+ },
+ "002_visualears_worst269_004.wav": {
+  "baseline_norm": "ترکی",
+  "candidate_norm": "ترکی"
+ }
+}

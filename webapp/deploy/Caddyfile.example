@@ -1,0 +1,39 @@
+# VisualEars — Caddy config for the Mac Studio origin behind visualears.com
+# (Cloudflare DNS-only / grey cloud, so Caddy terminates TLS itself via
+# auto-HTTPS). Everything is same-origin: app, ORT runtime, model files.
+#
+#   1. Build the app:        cd webapp && VITE_MODEL_BASE=/models npm run build
+#   2. Copy webapp/dist  ->  /srv/visualears/site
+#   3. Download the model files into /srv/visualears/models :
+#        fastconformer_ctc_fixed2005_fp16_full_io.onnx
+#        fastconformer_ctc_fixed2005_fp16_full_io.onnx.data
+#        fastconformer_ctc_fixed2005_fp16_full_io_embedded.onnx
+#      (from huggingface.co/Reza2kn/visualears-fastconformer-fa-full-ab-onnx-fp16)
+#   4. caddy run --config Caddyfile
+
+visualears.com {
+	root * /srv/visualears/site
+	encode zstd gzip
+
+	# WASM threads (SharedArrayBuffer) require cross-origin isolation.
+	header {
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Embedder-Policy "require-corp"
+	}
+
+	# Model binaries — immutable, cache hard. The app also keeps a copy in
+	# Cache Storage, so this only matters for the very first visit.
+	handle_path /models/* {
+		root * /srv/visualears/models
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# Hashed build assets are immutable too.
+	@assets path /assets/* /ort/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	# SPA fallback.
+	try_files {path} /index.html
+	file_server
+}

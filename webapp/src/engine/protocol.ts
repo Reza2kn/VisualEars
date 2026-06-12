@@ -34,7 +34,14 @@ export type ToWorker =
       /** Dev/testing override: skip the WebGPU tier. */
       forceTier?: 'wasm';
     }
-  | { type: 'decode'; id: number; pcm: Float32Array };
+  | {
+      type: 'decode';
+      id: number;
+      pcm: Float32Array;
+      /** Dev/validation only: decode all 251 output steps (including the
+       *  padded region) to match the offline parity evaluations. */
+      fullSteps?: boolean;
+    };
 
 export type FromWorker =
   | { type: 'caps'; caps: Capabilities }

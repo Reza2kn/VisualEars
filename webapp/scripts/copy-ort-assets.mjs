@@ -1,8 +1,7 @@
-// Copies the onnxruntime-web runtime binaries into public/ort/ so the app is
-// fully same-origin (zero CDN). Two sets:
-//   public/ort/         — modern ORT (wasm SIMD+threads, WebGPU/JSEP)
-//   public/ort/compat/  — ORT 1.18 (last release with non-SIMD wasm binaries),
-//                         used by the silent no-SIMD fallback tier
+// Copies the ORT 1.18 compat runtime into public/ort/compat/ so the no-SIMD
+// fallback tier is fully same-origin (zero CDN). The modern tiers use the
+// onnxruntime-web bundle build, which carries its JS glue inline and resolves
+// its .wasm next to itself — no copies needed.
 import { copyFileSync, mkdirSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,13 +10,6 @@ const root = dirname(fileURLToPath(import.meta.url));
 const webapp = join(root, '..');
 
 const sets = [
-  {
-    from: join(webapp, 'node_modules/onnxruntime-web/dist'),
-    to: join(webapp, 'public/ort'),
-    // every loader/binary variant the extern-wasm build may request at runtime
-    // (plain CPU, jsep/webgpu, asyncify, jspi)
-    match: (f) => /^ort-wasm-simd-threaded.*\.(wasm|mjs)$/.test(f),
-  },
   {
     from: join(webapp, 'node_modules/onnxruntime-web-compat/dist'),
     to: join(webapp, 'public/ort/compat'),

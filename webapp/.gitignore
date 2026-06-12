@@ -4,3 +4,4 @@ public/ort
 *.local
 .DS_Store
 *.tsbuildinfo
+tests/shots/

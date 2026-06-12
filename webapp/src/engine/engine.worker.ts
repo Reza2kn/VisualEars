@@ -11,10 +11,9 @@ import * as ort from 'onnxruntime-web/webgpu';
 import { detectCapabilities, type Capabilities } from './capabilities';
 import { fetchWithCache } from './modelCache';
 import { FeatureExtractor, FIXED_FRAMES, N_MELS, OUTPUT_STRIDE, SAMPLE_RATE } from './features';
-import { float32ArrayToFloat16Bits } from './fp16';
+import { float32ArrayToFloat16Bits, fp16TensorData, logitsNumericView } from './fp16';
 import { decodeCtcGreedy, TOKENS } from './ctc';
 import type { FromWorker, ToWorker, Provider } from './protocol';
-import type { LogitsType } from './fp16';
 
 const post = (msg: FromWorker) => (self as unknown as Worker).postMessage(msg);
 
@@ -39,7 +38,9 @@ async function load(msg: Extract<ToWorker, { type: 'load' }>): Promise<void> {
   const data = await fetchWithCache(msg.dataUrl, msg.dataBytes, onProgress);
 
   post({ type: 'phase', phase: 'init' });
-  ort.env.wasm.wasmPaths = '/ort/';
+  // No wasmPaths override: the bundle build ships its JS glue inline and
+  // resolves its .wasm next to itself (node_modules in dev, hashed asset in
+  // prod) — same-origin either way, and nothing for Vite to mis-import.
   const threads = caps.threads ? caps.maxThreads : 1;
   ort.env.wasm.numThreads = threads;
 
@@ -92,19 +93,26 @@ async function decode(msg: Extract<ToWorker, { type: 'decode' }>): Promise<void>
     const started = performance.now();
     const { features, frameCount } = extractor.compute(msg.pcm);
     const packed = float32ArrayToFloat16Bits(features);
-    const tensor = new ort.Tensor('float16', packed, [1, N_MELS, FIXED_FRAMES]);
+    const tensor = new ort.Tensor(
+      'float16',
+      fp16TensorData(packed) as unknown as Uint16Array,
+      [1, N_MELS, FIXED_FRAMES],
+    );
     const inferStarted = performance.now();
     const output = await session.run({ processed_signal: tensor });
     const inferMs = performance.now() - inferStarted;
     const logits = output['logits'];
     const dims = logits.dims as readonly number[];
     const vocabSize = dims[2] || TOKENS.length;
-    const usableSteps = Math.max(1, Math.min(dims[1], Math.ceil(frameCount / OUTPUT_STRIDE)));
+    const usableSteps = msg.fullSteps
+      ? dims[1]
+      : Math.max(1, Math.min(dims[1], Math.ceil(frameCount / OUTPUT_STRIDE)));
+    const view = logitsNumericView(logits.data, logits.type);
     const { text, firstStep, lastStep } = decodeCtcGreedy(
-      logits.data as ArrayLike<number>,
+      view.values,
       usableSteps,
       vocabSize,
-      logits.type as LogitsType,
+      view.type,
     );
     const totalMs = performance.now() - started;
     const audioSeconds = msg.pcm.length / SAMPLE_RATE;

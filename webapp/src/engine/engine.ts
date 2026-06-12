@@ -193,7 +193,7 @@ class Engine {
 
   /** Serialized decode of ≤ ~20 s of 16 kHz mono PCM. The buffer is transferred —
    *  pass a copy you will not reuse. */
-  decode(pcm: Float32Array): Promise<DecodeOutcome> {
+  decode(pcm: Float32Array, opts?: { fullSteps?: boolean }): Promise<DecodeOutcome> {
     const run = async (): Promise<DecodeOutcome> => {
       await this.ensureLoaded();
       if (this.compat) {
@@ -206,7 +206,7 @@ class Engine {
       const id = this.nextDecodeId++;
       return new Promise<DecodeOutcome>((resolve, reject) => {
         this.pendingDecodes.set(id, { resolve, reject });
-        const msg: ToWorker = { type: 'decode', id, pcm };
+        const msg: ToWorker = { type: 'decode', id, pcm, fullSteps: opts?.fullSteps };
         worker.postMessage(msg, [pcm.buffer]);
       });
     };

@@ -5,7 +5,7 @@
 
 import { fetchWithCache, type ProgressFn } from './modelCache';
 import { FeatureExtractor, FIXED_FRAMES, N_MELS, OUTPUT_STRIDE, SAMPLE_RATE } from './features';
-import { float32ArrayToFloat16Bits, type LogitsType } from './fp16';
+import { float32ArrayToFloat16Bits, fp16TensorData, logitsNumericView } from './fp16';
 import { decodeCtcGreedy, TOKENS } from './ctc';
 import type { DecodeOutcome } from './protocol';
 
@@ -82,7 +82,11 @@ export async function createCompatEngine(
       const started = performance.now();
       const { features, frameCount } = extractor.compute(pcm);
       const packed = float32ArrayToFloat16Bits(features);
-      const tensor = new ort.Tensor('float16', packed, [1, N_MELS, FIXED_FRAMES]);
+      const tensor = new ort.Tensor(
+        'float16',
+        fp16TensorData(packed) as unknown as Uint16Array,
+        [1, N_MELS, FIXED_FRAMES],
+      );
       const inferStarted = performance.now();
       const output = await session.run({ processed_signal: tensor });
       const inferMs = performance.now() - inferStarted;
@@ -90,11 +94,12 @@ export async function createCompatEngine(
       const dims = logits.dims;
       const vocabSize = dims[2] || TOKENS.length;
       const usableSteps = Math.max(1, Math.min(dims[1], Math.ceil(frameCount / OUTPUT_STRIDE)));
+      const view = logitsNumericView(logits.data, logits.type);
       const { text, firstStep, lastStep } = decodeCtcGreedy(
-        logits.data,
+        view.values,
         usableSteps,
         vocabSize,
-        logits.type as LogitsType,
+        view.type,
       );
       const totalMs = performance.now() - started;
       const audioSeconds = pcm.length / SAMPLE_RATE;

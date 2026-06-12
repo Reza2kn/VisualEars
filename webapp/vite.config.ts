@@ -27,11 +27,6 @@ function crossOriginIsolation(): Plugin {
 
 export default defineConfig({
   plugins: [react(), crossOriginIsolation()],
-  resolve: {
-    // Resolve onnxruntime-web to its extern-wasm flavor: nothing embedded, the
-    // runtime fetches its .mjs/.wasm from ort.env.wasm.wasmPaths (/ort/, self-hosted).
-    conditions: ['onnxruntime-web-use-extern-wasm'],
-  },
   worker: {
     format: 'es',
   },

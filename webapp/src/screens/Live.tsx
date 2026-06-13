@@ -191,7 +191,12 @@ export function LiveScreen({ onBack }: { onBack: () => void }) {
         {snapshot.error && (
           <div style={{ font: 'var(--type-body)', color: 'var(--danger)' }}>{snapshot.error}</div>
         )}
-        {!snapshot.error && lines.length === 0 && (
+        {!snapshot.error && snapshot.noSignal && (
+          <div style={{ font: 'var(--type-body)', color: 'var(--warning)', textAlign: 'center', marginTop: 24 }}>
+            {fa.live.noSignal}
+          </div>
+        )}
+        {!snapshot.error && !snapshot.noSignal && lines.length === 0 && (
           <div style={{ font: 'var(--type-body)', color: 'var(--text-faint)', textAlign: 'center', marginTop: 24 }}>
             {fa.live.quietEmpty}
           </div>

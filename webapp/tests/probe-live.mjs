@@ -3,7 +3,7 @@
 // drives the full real path — AudioWorklet capture, VAD, partial decodes,
 // finalize-on-silence. Chrome's --use-file-for-fake-audio-capture is silent
 // in new headless, so we bring our own fake mic.
-// Usage: node tests/probe-live.mjs [wav]
+// Usage: node tests/probe-live.mjs [--gain 0.06] [wav]
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,8 +11,14 @@ import puppeteer from 'puppeteer-core';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const WAV = process.argv[2] ?? join(here, 'fixtures/e2e/002_visualears_worst269_004.wav');
+const args = process.argv.slice(2);
+const gainIdx = args.indexOf('--gain');
+// gain 1 ≈ a normal mic; ~0.06 simulates a quiet/distant mic (RMS ≈ 0.008).
+const GAIN = gainIdx >= 0 ? Number(args[gainIdx + 1]) : 1;
+const positional = args.filter((a, i) => a !== '--gain' && (gainIdx < 0 || i !== gainIdx + 1));
+const WAV = positional[0] ?? join(here, 'fixtures/e2e/002_visualears_worst269_004.wav');
 const wavB64 = readFileSync(WAV).toString('base64');
+console.log(`[probe-live] wav=${WAV.split('/').pop()} gain=${GAIN}`);
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
@@ -29,7 +35,7 @@ try {
     const t = msg.text();
     if (t.includes('[engine]') || t.includes('[live]')) console.log(`[page] ${t}`);
   });
-  await page.evaluateOnNewDocument((b64) => {
+  await page.evaluateOnNewDocument((b64, gain) => {
     localStorage.removeItem('ve-web-stage');
     // Synthetic mic: decode the wav, append 2.5 s of silence, loop it into a
     // MediaStreamDestination, and hand that stream to anyone calling
@@ -48,7 +54,9 @@ try {
       s0.connect(off.destination);
       s0.start();
       const rendered = await off.startRendering();
-      looped.getChannelData(0).set(rendered.getChannelData(0));
+      const samples = rendered.getChannelData(0);
+      if (gain !== 1) for (let i = 0; i < samples.length; i++) samples[i] *= gain;
+      looped.getChannelData(0).set(samples);
       const dest = ctx.createMediaStreamDestination();
       const src = ctx.createBufferSource();
       src.buffer = looped;
@@ -61,7 +69,7 @@ try {
       if (constraints && constraints.audio) return makeStream();
       return Promise.reject(new Error('fake getUserMedia: audio only'));
     };
-  }, wavB64);
+  }, wavB64, GAIN);
   await page.goto('http://localhost:5199', { waitUntil: 'domcontentloaded' });
 
   await page.waitForFunction(`document.body.innerText.includes('چی‌کار کنیم؟')`, { polling: 300 });
@@ -73,13 +81,41 @@ try {
       polling: 500,
       timeout: 90_000,
     });
-    await new Promise((r) => setTimeout(r, 4000));
+    // Let partials, the 18 s force-commit, and silence finalization play out.
+    const settleMs = WAV.includes('golha') ? 40_000 : 6_000;
+    await new Promise((r) => setTimeout(r, settleMs));
     const text = await page.evaluate(() => document.body.innerText);
-    const lines = text.split('\n').filter((l) => /[؀-ۿ]/.test(l) && l.length > 3);
+    const lines = text.split('\n').filter((l) => /[؀-ۿ]/.test(l) && l.trim().length > 3);
     console.log('[probe-live] transcript lines:');
-    for (const l of lines.slice(-6)) console.log('   ', l);
+    for (const l of lines.slice(-8)) console.log('   ', l);
     await page.screenshot({ path: join(here, 'shots/3-live.png') });
-    console.log('[probe-live] PASS — live mode committed an utterance (shots/3-live.png updated)');
+
+    const chrome = ['مدل', 'زیرنویس', 'میکروفون', 'سیستم', 'گوینده', 'ساکته'];
+    const spoken = lines.filter((l) => !chrome.some((c) => l.includes(c))).join(' ');
+    if (WAV.includes('golha')) {
+      const gold = readFileSync(join(here, 'fixtures/e2e/golha_clear.txt'), 'utf8');
+      const goldWords = [...new Set(gold.split(/\s+/).filter((w) => w.length > 2))];
+      const hit = goldWords.filter((w) => spoken.includes(w));
+      const overlap = hit.length / goldWords.length;
+      console.log(
+        `[probe-live] committed text: "${spoken.slice(0, 160)}${spoken.length > 160 ? '…' : ''}"`,
+      );
+      console.log(
+        `[probe-live] gold-word overlap: ${hit.length}/${goldWords.length} (${(overlap * 100).toFixed(0)}%)`,
+      );
+      if (overlap < 0.3) {
+        console.error('[probe-live] FAIL — words are not forming from live audio');
+        process.exitCode = 1;
+      } else {
+        console.log('[probe-live] PASS — live captions carry the spoken words');
+      }
+    } else if (!/[ا-ی]/.test(spoken)) {
+      // Persian LETTERS required — timestamps alone (Persian digits) don't count.
+      console.error('[probe-live] FAIL — utterance committed but no Persian words visible');
+      process.exitCode = 1;
+    } else {
+      console.log('[probe-live] PASS — live mode committed Persian text (shots/3-live.png updated)');
+    }
   } catch {
     const text = await page.evaluate(() => document.body.innerText);
     console.error('[probe-live] FAIL — no utterance in 90 s. Screen text:');

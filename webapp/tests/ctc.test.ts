@@ -36,12 +36,21 @@ describe('decodeCtcGreedy', () => {
       BLANK_ID,
       wordInitial, // same piece again after blank — kept (new emission)
     ];
-    const { text, firstStep, lastStep } = decodeCtcGreedy(logitsFor(ids), ids.length, VOCAB, 'float32');
+    const { text, firstStep, lastStep, words } = decodeCtcGreedy(
+      logitsFor(ids),
+      ids.length,
+      VOCAB,
+      'float32',
+    );
     const w = TOKENS[wordInitial].slice(1); // without ▁
     const c = TOKENS[continuation];
     expect(text).toBe(`${w}${c} ${w}`);
     expect(firstStep).toBe(1);
     expect(lastStep).toBe(7);
+    // Word timings: two words with their CTC step spans (80 ms each).
+    expect(words.map((x) => x.text)).toEqual([`${w}${c}`, w]);
+    expect(words[0]).toMatchObject({ startStep: 1, endStep: 5 });
+    expect(words[1]).toMatchObject({ startStep: 7, endStep: 7 });
   });
 
   it('re-emits a token after a blank separator (xx-blank-x → x x)', () => {

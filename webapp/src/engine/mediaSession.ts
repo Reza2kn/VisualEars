@@ -4,6 +4,7 @@
 
 import { engine } from './engine';
 import { HOP_LENGTH, MAX_SAMPLES, SAMPLE_RATE } from './features';
+import { punctuate } from './punctuate';
 import type { DecodeStats } from './protocol';
 
 export interface Segment {
@@ -87,14 +88,16 @@ export async function transcribePcm(
     }
     if (peak > 1e-4 && chunk.length >= SAMPLE_RATE * 0.2) {
       const outcome = await engine.decode(chunk);
-      if (outcome.text) {
+      // Chunk boundaries land on silence valleys, so the end is sentence-final.
+      const text = punctuate(outcome.words, { isFinal: true });
+      if (text) {
         const base = cursor / SAMPLE_RATE;
         const tStart = base + Math.max(0, outcome.firstStep) * STEP_SECONDS;
         const tEnd = Math.min(
           end / SAMPLE_RATE,
           base + (outcome.lastStep + 1) * STEP_SECONDS,
         );
-        segments.push({ tStart, tEnd: Math.max(tEnd, tStart + 0.4), speakerId: 0, text: outcome.text });
+        segments.push({ tStart, tEnd: Math.max(tEnd, tStart + 0.4), speakerId: 0, text });
       }
       onProgress({ pct: (end / pcm.length) * 100, stats: outcome.stats });
     } else {

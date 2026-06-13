@@ -95,7 +95,7 @@ export async function createCompatEngine(
       const vocabSize = dims[2] || TOKENS.length;
       const usableSteps = Math.max(1, Math.min(dims[1], Math.ceil(frameCount / OUTPUT_STRIDE)));
       const view = logitsNumericView(logits.data, logits.type);
-      const { text, firstStep, lastStep } = decodeCtcGreedy(
+      const { text, firstStep, lastStep, words } = decodeCtcGreedy(
         view.values,
         usableSteps,
         vocabSize,
@@ -107,6 +107,7 @@ export async function createCompatEngine(
         text,
         firstStep,
         lastStep,
+        words,
         stats: {
           preprocessMs: inferStarted - started,
           inferMs,

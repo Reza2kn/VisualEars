@@ -2,6 +2,7 @@
 
 import type { Capabilities } from './capabilities';
 import type { LogitsType } from './fp16';
+import type { WordTiming } from './ctc';
 
 export type Provider = 'webgpu' | 'wasm-simd-threaded' | 'wasm-simd' | 'wasm-nosimd';
 
@@ -20,6 +21,8 @@ export interface DecodeOutcome {
   text: string;
   firstStep: number;
   lastStep: number;
+  /** Per-word CTC step spans (80 ms/step) — drives prosody punctuation. */
+  words: WordTiming[];
   stats: DecodeStats;
 }
 

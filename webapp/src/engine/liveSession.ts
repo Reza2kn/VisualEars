@@ -10,6 +10,7 @@
 
 import { engine } from './engine';
 import { MAX_SAMPLES, SAMPLE_RATE } from './features';
+import { punctuate } from './punctuate';
 import { fa } from '../fa';
 
 export type LiveSource = 'mic' | 'sys';
@@ -380,7 +381,7 @@ export class LiveSession {
       const outcome = await engine.decode(pcm);
       this.lastDecodeMs = outcome.stats.totalMs;
       if (final) {
-        const text = outcome.text;
+        const text = punctuate(outcome.words, { isFinal: true });
         const committed = text
           ? [...this.snapshot.utterances, { tStart: this.utteranceStartSec, speakerId: 0, text }]
           : this.snapshot.utterances;
@@ -412,7 +413,11 @@ export class LiveSession {
         }
       } else if (this.speechActive) {
         this.update({
-          partial: { tStart: this.utteranceStartSec, speakerId: 0, text: outcome.text },
+          partial: {
+            tStart: this.utteranceStartSec,
+            speakerId: 0,
+            text: punctuate(outcome.words, { isFinal: false }),
+          },
         });
       }
     } catch (err) {

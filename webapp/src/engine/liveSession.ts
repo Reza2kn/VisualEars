@@ -1,7 +1,7 @@
 /** Live transcription session: AudioWorklet capture → 16 kHz mono → RMS speech
  *  gate → utterance state machine (rolling ≤20 s window, partial decodes on an
  *  adaptive cadence, finalize after 900 ms of silence). Gate and segmentation
- *  thresholds mirror the validated Space demo (speech gate 0.006), with the
+ *  thresholds start below the validated Space demo gate (0.006), with the
  *  gate only adapting *upward* when ambient noise clearly exceeds it.
  *
  *  The capture context runs at the device's native rate (forcing 16 kHz makes
@@ -10,7 +10,9 @@
 
 import { engine } from './engine';
 import { MAX_SAMPLES, SAMPLE_RATE } from './features';
-import { punctuate } from './punctuate';
+import { itn, endsWithSpokenNumber } from './itn';
+import { OverlayBridge } from './overlayBridge';
+import { punctuate, nativeText } from './punctuate';
 import { fa } from '../fa';
 
 export type LiveSource = 'mic' | 'sys';
@@ -32,22 +34,48 @@ export interface LiveSnapshot {
    *  the UI shows a warm "I can't hear anything" hint. */
   noSignal: boolean;
   error: string | null;
+  /** Raw model text of the most recent decode (BEFORE ITN), for the demo's
+   *  ?debug=1 readout — lets you see whether the model spelled a number out
+   *  or blanked it. */
+  lastModelText: string;
 }
 
 const LEVEL_BARS = 26;
-// Space demo defaults: speech gate 0.006, ≤350 ms of trailing silence kept,
-// finalize after 900 ms of silence, ≥0.4 s before the first partial decode.
-const BASE_GATE = 0.006;
+// The web mic path often arrives quieter than uploaded media after browser
+// echo/noise processing. Start sensitive, then let the ambient floor raise the
+// gate when the room is noisy.
+const BASE_GATE = 0.0025;
 const MAX_GATE = 0.04;
 const TRAILING_SILENCE_MS = 350;
 const FINALIZE_SILENCE_MS = 900;
+/** Longer grace before finalizing when the utterance currently ends in a
+ *  number — keeps a pause inside a spoken number from splitting it. */
+const NUMBER_FINALIZE_SILENCE_MS = 1800;
 const MIN_PARTIAL_SECONDS = 0.4;
 const MIN_FINAL_SECONDS = 0.25;
+/** Silence appended to the FINAL decode only. The model was trained on clips
+ *  ending in real trailing silence, but the VAD cuts the utterance ~350 ms
+ *  after speech stops — too abrupt for the streaming ([70,1]) head to reliably
+ *  commit its sentence-final mark (. ، ؟). Zeros give it a clean "utterance
+ *  ended" cue. Can't add words; never touches partials/the anti-hostage loop. */
+const FINAL_TAIL_PAD_MS = 280;
 /** Continuous audio (e.g. tab playback) may never pause 900 ms — commit the
  *  utterance anyway before the rolling window starts dropping its start. */
 const FORCE_COMMIT_SECONDS = 18;
 const NO_SIGNAL_AFTER_MS = 5000;
 const NO_SIGNAL_PEAK = 0.0015;
+const AUDIO_CLOSE_TIMEOUT_MS = 1500;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** True when text carries at least one spoken character — not just spaces and
+ *  punctuation. Guards against committing a lone "." when the model emits
+ *  nothing for an utterance (e.g. a number it can't spell out). */
+function hasSpokenContent(text: string): boolean {
+  return /[^\s.،؛:؟!?]/u.test(text);
+}
 
 function resampleLinear(input: Float32Array, fromRate: number, toRate: number): Float32Array {
   if (fromRate === toRate) return input;
@@ -71,6 +99,7 @@ export class LiveSession {
     levels: new Float32Array(LEVEL_BARS),
     noSignal: false,
     error: null,
+    lastModelText: '',
   };
   private readonly onChange: () => void;
 
@@ -96,6 +125,7 @@ export class LiveSession {
   /** Bumped on every start/stop; async steps bail out when it changes
    *  (guards against StrictMode double-mounts and rapid source switches). */
   private generation = 0;
+  private readonly overlayBridge = new OverlayBridge();
 
   constructor(onChange: () => void) {
     this.onChange = onChange;
@@ -188,7 +218,28 @@ export class LiveSession {
     if (!navigator.mediaDevices.getDisplayMedia) {
       throw new Error('display-media-unsupported');
     }
-    const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+    const displayOptions = {
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+      // Browsers expose tab/system audio through the screen-capture picker.
+      // A live video track is required to keep Chrome's display-capture audio
+      // alive, so we request the lowest-impact track possible and simply never
+      // attach it to the UI.
+      video: {
+        frameRate: { max: 1 },
+      },
+      systemAudio: 'include',
+      surfaceSwitching: 'include',
+      selfBrowserSurface: 'exclude',
+    } as DisplayMediaStreamOptions & {
+      systemAudio?: 'include' | 'exclude';
+      surfaceSwitching?: 'include' | 'exclude';
+      selfBrowserSurface?: 'include' | 'exclude';
+    };
+    const stream = await navigator.mediaDevices.getDisplayMedia(displayOptions);
     if (stream.getAudioTracks().length === 0) {
       stream.getTracks().forEach((t) => t.stop());
       throw new Error('display-media-no-audio');
@@ -230,8 +281,9 @@ export class LiveSession {
     this.mediaStream?.getTracks().forEach((t) => t.stop());
     this.mediaStream = null;
     if (this.ctx) {
-      await this.ctx.close().catch(() => undefined);
+      const ctx = this.ctx;
       this.ctx = null;
+      await Promise.race([ctx.close().catch(() => undefined), wait(AUDIO_CLOSE_TIMEOUT_MS)]);
     }
     this.speechActive = false;
     this.silenceMs = 0;
@@ -240,7 +292,7 @@ export class LiveSession {
     this.noiseFloor = 0;
     this.quietMs = 0;
     this.levelRing.fill(0);
-    this.update({ running: false, noSignal: false, levels: new Float32Array(LEVEL_BARS) });
+    this.update({ running: false, noSignal: false, levels: new Float32Array(LEVEL_BARS), lastModelText: '' });
   }
 
   /** Speech gate: the proven default, raised only when ambient noise clearly
@@ -296,7 +348,13 @@ export class LiveSession {
     if (!this.speechActive) return;
     this.silenceMs += chunkMs;
     if (this.silenceMs <= TRAILING_SILENCE_MS) this.appendToUtterance(chunk);
-    if (this.silenceMs >= FINALIZE_SILENCE_MS && !this.finalizing) {
+    // If the utterance so far ends mid-number (e.g. "دو" before "هزار"), wait
+    // longer before finalizing so a natural pause inside a number doesn't split
+    // it into separate decodes ("۲" then "۱۰۰۰" instead of "۲۰۰۰").
+    const finalizeGate = endsWithSpokenNumber(this.snapshot.partial?.text ?? '')
+      ? NUMBER_FINALIZE_SILENCE_MS
+      : FINALIZE_SILENCE_MS;
+    if (this.silenceMs >= finalizeGate && !this.finalizing) {
       this.finalizing = true;
       this.finalizeUtterance();
     }
@@ -376,13 +434,34 @@ export class LiveSession {
   private async decodeUtterance(final: boolean): Promise<void> {
     this.decoding = true;
     try {
-      const pcm = this.utterancePcm.slice();
-      const capturedLen = pcm.length;
+      const capturedLen = this.utterancePcm.length;
+      let pcm = this.utterancePcm.slice();
+      // Finalize only: append a short silence tail so the streaming model gets a
+      // clean end-of-utterance cue and commits its sentence-final mark. `capturedLen`
+      // stays the pre-pad length so the tail-seeding below is unaffected.
+      if (final && pcm.length < MAX_SAMPLES) {
+        const pad = Math.min(MAX_SAMPLES - pcm.length, Math.round((FINAL_TAIL_PAD_MS / 1000) * SAMPLE_RATE));
+        const padded = new Float32Array(pcm.length + pad);
+        padded.set(pcm, 0);
+        pcm = padded;
+      }
       const outcome = await engine.decode(pcm);
       this.lastDecodeMs = outcome.stats.totalMs;
+      if (this.snapshot.error) this.update({ error: null });
+      const native = engine.getState().variant.nativeFormatting === true;
       if (final) {
-        const text = punctuate(outcome.words, { isFinal: true });
-        const committed = text
+        const raw = native ? nativeText(outcome.text) : punctuate(outcome.words, { isFinal: true });
+        const text = native ? raw : itn(raw);
+        // Diagnostic: what the model actually emitted vs the digit-normalized
+        // form. Open DevTools (enable Verbose) and speak a number to see whether
+        // the model spelled it out (→ ITN converts it) or blanked it (nothing
+        // for ITN to work with — a model/tokenizer limitation, not ITN).
+        if (raw !== text || !hasSpokenContent(raw)) {
+          console.debug('[itn] final:', JSON.stringify(raw), '→', JSON.stringify(text));
+        }
+        this.update({ lastModelText: raw });
+        this.overlayBridge.send(text, true);
+        const committed = hasSpokenContent(text)
           ? [...this.snapshot.utterances, { tStart: this.utteranceStartSec, speakerId: 0, text }]
           : this.snapshot.utterances;
 
@@ -412,16 +491,22 @@ export class LiveSession {
           this.update({ utterances: committed, partial: null });
         }
       } else if (this.speechActive) {
+        const raw = native ? nativeText(outcome.text) : punctuate(outcome.words, { isFinal: false });
+        const text = native ? raw : itn(raw);
+        this.overlayBridge.send(text, false);
         this.update({
+          lastModelText: raw,
           partial: {
             tStart: this.utteranceStartSec,
             speakerId: 0,
-            text: punctuate(outcome.words, { isFinal: false }),
+            text,
           },
         });
       }
     } catch (err) {
       console.warn('[live] decode failed:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      this.update({ error: `رونویسی به مشکل خورد: ${message}` });
       if (final) {
         this.speechActive = false;
         this.finalizing = false;

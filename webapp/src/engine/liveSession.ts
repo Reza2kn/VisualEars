@@ -449,9 +449,12 @@ export class LiveSession {
       this.lastDecodeMs = outcome.stats.totalMs;
       if (this.snapshot.error) this.update({ error: null });
       const native = engine.getState().variant.nativeFormatting === true;
+      // Native models emit their own punctuation; v4+ still transcribe numbers as
+      // spoken words, so ITN must run to digitize them even when native.
+      const spokenNum = engine.getState().variant.spokenNumbers === true;
       if (final) {
         const raw = native ? nativeText(outcome.text) : punctuate(outcome.words, { isFinal: true });
-        const text = native ? raw : itn(raw);
+        const text = native && !spokenNum ? raw : itn(raw);
         // Diagnostic: what the model actually emitted vs the digit-normalized
         // form. Open DevTools (enable Verbose) and speak a number to see whether
         // the model spelled it out (→ ITN converts it) or blanked it (nothing
@@ -492,7 +495,7 @@ export class LiveSession {
         }
       } else if (this.speechActive) {
         const raw = native ? nativeText(outcome.text) : punctuate(outcome.words, { isFinal: false });
-        const text = native ? raw : itn(raw);
+        const text = native && !spokenNum ? raw : itn(raw);
         this.overlayBridge.send(text, false);
         this.update({
           lastModelText: raw,

@@ -4,7 +4,8 @@
 
 import { engine } from './engine';
 import { HOP_LENGTH, MAX_SAMPLES, SAMPLE_RATE } from './features';
-import { punctuate } from './punctuate';
+import { itn } from './itn';
+import { punctuate, nativeText } from './punctuate';
 import type { DecodeStats } from './protocol';
 
 export interface Segment {
@@ -89,7 +90,10 @@ export async function transcribePcm(
     if (peak > 1e-4 && chunk.length >= SAMPLE_RATE * 0.2) {
       const outcome = await engine.decode(chunk);
       // Chunk boundaries land on silence valleys, so the end is sentence-final.
-      const text = punctuate(outcome.words, { isFinal: true });
+      const mv = engine.getState().variant;
+      const text = mv.nativeFormatting === true
+        ? (mv.spokenNumbers === true ? itn(nativeText(outcome.text)) : nativeText(outcome.text))
+        : itn(punctuate(outcome.words, { isFinal: true }));
       if (text) {
         const base = cursor / SAMPLE_RATE;
         const tStart = base + Math.max(0, outcome.firstStep) * STEP_SECONDS;

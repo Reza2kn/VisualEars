@@ -31,10 +31,13 @@ export interface ModelVariant {
   recommended: boolean;
   tensorType: 'float16' | 'float32';
   hasLengthInput: boolean;
-  /** Model emits punctuation + digits (and speaker tokens) in its own token
-   *  stream, so the pipeline must NOT run the Persian prosody punctuator or the
-   *  Persian ITN over its output — the decoder's joined text is already final. */
+  /** Model emits punctuation (and speaker tokens) in its own token stream, so the
+   *  pipeline must NOT run the Persian prosody punctuator over its output. */
   nativeFormatting?: boolean;
+  /** Model transcribes numbers as spoken Persian words (not digits) — so the
+   *  Persian ITN MUST still run to digitize them for display, even when
+   *  nativeFormatting handles the punctuation. (v4+: spoken-number labels.) */
+  spokenNumbers?: boolean;
   /** Graph + external-data pair for the modern (webgpu / wasm-simd) tiers. */
   graph: ModelFile;
   data: ModelFile;
@@ -70,6 +73,7 @@ export const MODEL_VARIANTS: ModelVariant[] = [
     tensorType: 'float16',
     hasLengthInput: true,
     nativeFormatting: true,
+    spokenNumbers: true,
     graph: {
       name: 'shenava_koochik_0_9_v4_ctc_fixed2005_len_att70_1_fp16_full_io.onnx',
       hfUrl: `${HF_SHENAVA_KOOCHIK_09_V3_FP16}/shenava_koochik_0_9_v4_ctc_fixed2005_len_att70_1_fp16_full_io.onnx`,

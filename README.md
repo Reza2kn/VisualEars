@@ -30,3 +30,7 @@ This is one of those rare startup adventures where you'll actually be rooting fo
 ## 📞 Let's Connect
 
 Ready to be a part of this? I'm all ears. Let's be the ears for others and turn this shared dream into a reality!
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).

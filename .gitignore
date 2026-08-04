@@ -1,0 +1,15 @@
+.DS_Store
+__pycache__/
+
+# Rust and Windows build output
+**/target/
+.build/
+*.exe
+*.msi
+*.zip
+*.pdb
+
+# Runtime output
+caption-smoke.png
+WebView2/
+*.log

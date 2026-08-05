@@ -20,6 +20,10 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 #[cfg(not(all(unix, not(target_os = "macos"))))]
 use winit::window::{Icon, Window, WindowLevel};
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+use std::io::BufRead;
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(not(all(unix, not(target_os = "macos"))))]
 const SHENAVA_ICON_PNG: &[u8] = include_bytes!("../assets/shenava-panel-logo.png");
@@ -147,6 +151,45 @@ fn caption_worker(rx: Receiver<Vec<f32>>, mut cap: LiveCaptioner, transcript: Sh
     }
 }
 
+/// standby caption worker: identical to `caption_worker` but only runs the heavy ASR while `active`
+/// is true (window visible). When hidden it cheaply drains audio so the warm-loaded model idles at
+/// ~0 ASR CPU instead of being torn down.
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn caption_worker_standby(
+    rx: Receiver<Vec<f32>>,
+    mut cap: LiveCaptioner,
+    transcript: Shared,
+    active: Arc<AtomicBool>,
+) {
+    let mut ring: Vec<f32> = Vec::new();
+    loop {
+        match rx.recv_timeout(Duration::from_millis(120)) {
+            Ok(chunk) => ring.extend(chunk),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(_) => break,
+        }
+        while let Ok(chunk) = rx.try_recv() {
+            ring.extend(chunk);
+        }
+        let batch = std::mem::take(&mut ring);
+        if active.load(Ordering::Relaxed) {
+            for ev in cap.feed_batch(&batch) {
+                if let Ok(mut ts) = transcript.lock() {
+                    ts.apply(&ev);
+                }
+            }
+        }
+    }
+}
+
+/// Shared steering state for a standby (hidden-at-launch) overlay child.
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+struct StandbyControl {
+    window: Option<Arc<Window>>,
+    visible: bool,
+    quit: bool,
+}
+
 #[cfg(not(all(unix, not(target_os = "macos"))))]
 struct Overlay {
     window: Option<Arc<Window>>,
@@ -155,6 +198,12 @@ struct Overlay {
     animation: AnimationState,
     transcript: Shared,
     style: OverlayStyle,
+    /// standby-only: worker ASR gate (true => visible + processing)
+    active: Arc<AtomicBool>,
+    /// standby-only: shared show/hide/quit steering
+    standby: Option<Arc<Mutex<StandbyControl>>>,
+    /// standby-only: last-applied visibility (to avoid re-calling set_visible every frame)
+    last_visible: bool,
 }
 
 #[cfg(not(all(unix, not(target_os = "macos"))))]
@@ -192,23 +241,46 @@ impl ApplicationHandler for Overlay {
             softbuffer::Surface::new(&context, window.clone()).expect("softbuffer surface");
         self.window = Some(window);
         self.surface = Some(surface);
-    }
-
-    fn window_event(
-        &mut self,
-        el: &ActiveEventLoop,
-        _id: winit::window::WindowId,
-        event: WindowEvent,
-    ) {
-        match event {
-            WindowEvent::CloseRequested => el.exit(),
-            WindowEvent::RedrawRequested => self.draw(),
-            _ => {}
+        if let Some(ctrl) = &self.standby {
+            if let Ok(mut c) = ctrl.lock() {
+                c.window = self.window.clone();
+            }
+            if let Some(w) = &self.window {
+                w.set_visible(false);
+            }
         }
     }
 
+    fn window_event(
+            &mut self,
+            el: &ActiveEventLoop,
+            _id: winit::window::WindowId,
+            event: WindowEvent,
+        ) {
+            match event {
+                WindowEvent::CloseRequested => el.exit(),
+                WindowEvent::RedrawRequested => self.draw(),
+                _ => {}
+            }
+        }
+
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
         el.set_control_flow(ControlFlow::wait_duration(Duration::from_millis(33)));
+        if let Some(ctrl) = &self.standby {
+            let c = ctrl.lock().unwrap();
+            if c.quit {
+                el.exit();
+                return;
+            }
+            if c.visible != self.last_visible {
+                self.last_visible = c.visible;
+                self.active.store(c.visible, Ordering::Relaxed);
+                if let Some(w) = c.window.clone() {
+                    w.set_visible(c.visible);
+                    w.request_redraw();
+                }
+            }
+        }
         if let Some(w) = &self.window {
             w.request_redraw();
         }
@@ -302,6 +374,71 @@ pub fn run(
         animation: AnimationState::new(),
         transcript,
         style: style.clamp(),
+        active: Arc::new(AtomicBool::new(true)),
+        standby: None,
+        last_visible: true,
+    };
+    event_loop.run_app(&mut app)?;
+    Ok(())
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+pub fn run_standby(
+    rec: StreamingRecognizer,
+    rescorer: Option<StaticRescorer>,
+    style: OverlayStyle,
+    device: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let transcript: Shared = Arc::new(Mutex::new(TranscriptState::default()));
+    let cap = match rescorer {
+        Some(r) => LiveCaptioner::with_static_guide(rec, r),
+        None => LiveCaptioner::new(rec),
+    }
+    .with_max_active_seconds(style.rolling_window_seconds);
+    let active = Arc::new(AtomicBool::new(false));
+    let ctrl = Arc::new(Mutex::new(StandbyControl {
+        window: None,
+        visible: false,
+        quit: false,
+    }));
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _capture = crate::audio::start(tx, device)?; // streams while standby; worker drains when idle
+    {
+        let transcript = transcript.clone();
+        let active = active.clone();
+        std::thread::spawn(move || caption_worker_standby(rx, cap, transcript, active));
+    }
+    // stdin command channel: show | hide | quit  (closed / EOF => commands stop, child stays alive)
+    {
+        let ctrl = ctrl.clone();
+        std::thread::spawn(move || {
+            let stdin = std::io::stdin();
+            for line in stdin.lock().lines().map_while(Result::ok) {
+                let mut c = ctrl.lock().unwrap();
+                match line.trim() {
+                    "show" | "start" | "go" => c.visible = true,
+                    "hide" | "stop" | "pause" => c.visible = false,
+                    "quit" | "exit" => {
+                        c.quit = true;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
+    eprintln!("[overlay] standby ready: model loaded, window hidden; awaiting show/hide/quit on stdin");
+    let event_loop = EventLoop::new()?;
+    let mut app = Overlay {
+        window: None,
+        surface: None,
+        renderer: CaptionRenderer::new(),
+        animation: AnimationState::new(),
+        transcript,
+        style: style.clamp(),
+        active,
+        standby: Some(ctrl),
+        last_visible: false,
     };
     event_loop.run_app(&mut app)?;
     Ok(())
@@ -327,6 +464,9 @@ pub fn run_static_caption(
         animation: AnimationState::new(),
         transcript,
         style: style.clamp(),
+        active: Arc::new(AtomicBool::new(true)),
+        standby: None,
+        last_visible: true,
     };
     event_loop.run_app(&mut app)?;
     Ok(())

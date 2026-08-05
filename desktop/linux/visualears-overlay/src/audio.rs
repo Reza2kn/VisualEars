@@ -15,6 +15,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use std::time::{Duration, Instant};
 #[cfg(not(target_os = "windows"))]
 use std::thread;
 
@@ -101,8 +102,11 @@ pub fn start(
     let err_fn = |e| eprintln!("cpal stream error: {e}");
 
     let signal_reported = Arc::new(AtomicBool::new(false));
+    let level_clock = Instant::now();
+    let last_level_report = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let feed = move |mono: Vec<f32>| {
         report_signal_once(&mono, &signal_reported);
+        report_audio_level(&mono, &level_clock, &last_level_report);
         let _ = tx.send(resample_linear(&mono, src_rate as f32, 16_000.0));
     };
 
@@ -206,10 +210,33 @@ fn report_signal_once(samples: &[f32], reported: &AtomicBool) {
     if reported.load(Ordering::Relaxed) || samples.is_empty() {
         return;
     }
-    let level =
-        (samples.iter().map(|sample| sample * sample).sum::<f32>() / samples.len() as f32).sqrt();
+    let level = rms_level(samples);
     if level >= 0.0005 && !reported.swap(true, Ordering::Relaxed) {
         eprintln!("[audio] signal detected rms={level:.5}");
+    }
+}
+
+fn rms_level(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    (samples.iter().map(|sample| sample * sample).sum::<f32>() / samples.len() as f32).sqrt()
+}
+
+fn report_audio_level(samples: &[f32], clock: &Instant, last_report: &std::sync::atomic::AtomicU64) {
+    if samples.is_empty() {
+        return;
+    }
+    let now_ms = clock.elapsed().as_millis() as u64;
+    let previous = last_report.load(Ordering::Relaxed);
+    if now_ms.saturating_sub(previous) < Duration::from_millis(250).as_millis() as u64 {
+        return;
+    }
+    if last_report
+        .compare_exchange(previous, now_ms, Ordering::Relaxed, Ordering::Relaxed)
+        .is_ok()
+    {
+        eprintln!("[audio] level rms={:.5}", rms_level(samples));
     }
 }
 
@@ -318,7 +345,13 @@ impl<F: Fn(Vec<f32>) + Send + Clone + 'static> CloneBox for F {
 
 #[cfg(test)]
 mod tests {
-    use super::is_system_audio_request;
+    use super::{is_system_audio_request, rms_level};
+
+    #[test]
+    fn computes_rms_for_normalized_samples() {
+        let level = rms_level(&[0.5, -0.5, 0.5, -0.5]);
+        assert!((level - 0.5).abs() < 0.000001);
+    }
 
     #[test]
     fn recognizes_the_system_audio_alias_without_stealing_named_devices() {

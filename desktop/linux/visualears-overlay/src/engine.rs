@@ -154,23 +154,23 @@ fn output_names(model: &TypedModel) -> Vec<String> {
 }
 
 impl StreamingRecognizer {
-    pub fn load(
+    /// Shared model-build stage. A raw `.onnx` must be parsed, typed and (optionally) f16-converted
+    /// - a slow, minute-scale pass - while a pre-optimized decluttered `.nnef.tar` skips all of it.
+    /// `f16` conversion is applied here, so an exported NNEF is already in the target precision.
+    fn build_typed_model(
+        m: &ShenavaModel,
         model_path: &str,
-        m: ShenavaModel,
-        ex: FeatureExtractor,
-        tokens: Vec<String>,
         f16: bool,
-    ) -> TractResult<Self> {
+    ) -> TractResult<TypedModel> {
         let (nl, dm, chunk) = (m.num_layers, m.d_model, m.chunk_frames);
-        // A pre-optimized DECLUTTERED NNEF (.nnef.tar) skips the slow onnx->typed parse
-        // (~3 min on a weak 32-bit CPU like the Google TV Streamer); the device still
-        // optimizes it for its own arch (fast), so it's numerically identical + arch-safe.
         let is_nnef = model_path.ends_with(".nnef.tar")
             || model_path.ends_with(".nnef.tgz")
             || model_path.ends_with(".nnef");
-        let typed = if is_nnef {
+        Ok(if is_nnef {
+            eprintln!("[model] loading pre-optimized NNEF…");
             tract_nnef::nnef().model_for_path(model_path)?
         } else {
+            eprintln!("[model] parsing ONNX graph + typing…");
             let mut t = tract_onnx::onnx()
                 .model_for_path(model_path)?
                 .with_input_fact(
@@ -189,6 +189,7 @@ impl StreamingRecognizer {
                 .with_input_fact(4, InferenceFact::dt_shape(i64::datum_type(), tvec!(1)))?
                 .into_typed()?;
             if f16 {
+                eprintln!("[model] ONNX typed; converting to f16…");
                 t = tract_core::floats::FloatPrecisionTranslator::new(
                     f32::datum_type(),
                     tract_core::prelude::f16::datum_type(),
@@ -196,11 +197,43 @@ impl StreamingRecognizer {
                 .translate_model(&t)?;
             }
             t
-        };
+        })
+    }
+
+    /// Export the typed (already f16/f32-converted) model as a pre-optimized NNEF `.nnef.tar`, so
+    /// later loads skip the slow onnx->typed / precision-conversion pass entirely.
+    pub fn export_nnef_to_tar(
+        onnx_path: &str,
+        m: &ShenavaModel,
+        f16: bool,
+        out_path: &str,
+    ) -> TractResult<()> {
+        let typed = Self::build_typed_model(m, onnx_path, f16)?;
+        // Constant-folding (into_optimized) folds weight Casts away, giving the NNEF serializer
+        // a graph it can write. The runnable build on load is per-device + fast anyway.
+        let opt = typed.into_optimized()?;
+        let file = std::fs::File::create(out_path)?;
+        tract_nnef::nnef().write_to_tar(&opt, file)?;
+        eprintln!("[model] wrote pre-optimized NNEF -> {out_path}");
+        Ok(())
+    }
+
+    pub fn load(
+        model_path: &str,
+        m: ShenavaModel,
+        ex: FeatureExtractor,
+        tokens: Vec<String>,
+        f16: bool,
+    ) -> TractResult<Self> {
+        let t_load_start = std::time::Instant::now();
+        let typed = Self::build_typed_model(&m, model_path, f16)?;
         // Capture output labels BEFORE optimize (tract preserves graph output order through
         // optimization, so positional index == index in the runnable's output vec).
         let enc_idx = resolve_enc_outputs(&output_names(&typed))?;
+        eprintln!("[model] building optimized runnable…");
         let model = typed.into_optimized()?.into_runnable()?;
+        eprintln!("[model] ready in {:.1}s", t_load_start.elapsed().as_secs_f32());
+        let (nl, dm, _chunk) = (m.num_layers, m.d_model, m.chunk_frames);
         let (clc, clt, clcl) = zero_caches(nl, dm, f16)?;
         let (h, c) = zero_pred_state()?;
         Ok(Self {

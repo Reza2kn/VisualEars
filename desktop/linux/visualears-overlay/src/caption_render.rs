@@ -8,7 +8,6 @@ use cosmic_text::{
 
 use crate::style::OverlayStyle;
 
-const LALEZAR: &[u8] = include_bytes!("../assets/fonts/Lalezar-Regular.ttf");
 const VAZIRMATN: &[u8] = include_bytes!("../assets/fonts/Vazirmatn.ttf");
 const CREAM: (u8, u8, u8) = (255, 247, 224);
 const SHADOW: (u8, u8, u8) = (30, 16, 22);
@@ -27,7 +26,6 @@ impl Default for CaptionRenderer {
 impl CaptionRenderer {
     pub fn new() -> Self {
         let mut font_system = FontSystem::new();
-        font_system.db_mut().load_font_data(LALEZAR.to_vec());
         font_system.db_mut().load_font_data(VAZIRMATN.to_vec());
         Self {
             font_system,
@@ -95,7 +93,7 @@ impl CaptionRenderer {
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_size(&mut self.font_system, None, None);
         buffer.set_wrap(&mut self.font_system, Wrap::None);
-        let attrs = Attrs::new().family(Family::Name("Lalezar"));
+        let attrs = Attrs::new().family(Family::Name("Vazirmatn"));
         buffer.set_text(&mut self.font_system, text, attrs, Shaping::Advanced);
         buffer.shape_until_scroll(&mut self.font_system, false);
         buffer
@@ -154,7 +152,7 @@ impl CaptionRenderer {
         // font and width. Disable a second wrap pass so those stable lines remain immutable.
         buffer.set_size(&mut self.font_system, Some(text_w), Some(h as f32));
         buffer.set_wrap(&mut self.font_system, Wrap::None);
-        let attrs = Attrs::new().family(Family::Name("Lalezar"));
+        let attrs = Attrs::new().family(Family::Name("Vazirmatn"));
         buffer.set_text(&mut self.font_system, text, attrs, Shaping::Advanced);
         for line in buffer.lines.iter_mut() {
             // AppKit `.natural` anchors Persian at the physical right edge. cosmic-text's `End`

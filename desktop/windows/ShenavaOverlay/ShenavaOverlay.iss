@@ -36,7 +36,6 @@ AppName={#MyAppName}
 AppVersion={#AppVersion}
 AppVerName={#MyAppName} {#AppVersion} ({#ArchitectureLabel})
 UninstallDisplayName={#MyAppName}
-UninstallDisplayName={#MyAppName}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppUrl}
 AppSupportURL={#MyAppUrl}

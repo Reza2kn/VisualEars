@@ -44,7 +44,7 @@ $CommonArgs = @($ModelKey, $Model, $Tokens, $Mel, "--hotwords", $Hotwords)
 if ($ReplayFixture) {
   $Fixture = Join-Path $Root "fixtures\golha_clear.wav"
   if (!(Test-Path $Fixture)) { throw "Missing replay fixture: $Fixture" }
-  & $Exe --overlay-wav @CommonArgs $Fixture
+  & $Exe --overlay-wav $ModelKey $Model $Tokens $Mel $Fixture --hotwords $Hotwords
   exit $LASTEXITCODE
 }
 

@@ -1,0 +1,52 @@
+[package]
+name = "shenava"
+version = "0.1.1"
+edition = "2021"
+description = "Shenava live Persian captions — cross-platform native tract engine."
+build = "build.rs"
+
+[package.metadata.winres]
+FileDescription = "Shenava"
+ProductName = "Shenava"
+ProductVersion = "0.1.1"
+OriginalFilename = "Shenava.exe"
+InternalName = "Shenava"
+
+[[bin]]
+name = "shenava"
+path = "src/main.rs"
+
+[dependencies]
+# tract main — streaming fixes (our merged #2441) + int4 MatMulNBits (#2290/#2340) + int8 GEMM kernels.
+tract-onnx = { git = "https://github.com/sonos/tract" }
+tract-core = { git = "https://github.com/sonos/tract" }
+tract-nnef = { git = "https://github.com/sonos/tract" }   # load pre-optimized decluttered NNEF
+rustfft = "6"
+hound = "3"            # WAV read for --selftest
+serde_json = "1"       # mel-filter matrix + tokens
+shenava-ctc-beam = { path = "vendor/shenava-ctc-beam" }
+cosmic-text = "0.12"   # Arabic/Persian shaping (rustybuzz) + headless raster — egui can't join Arabic
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
+# GUI + audio need system libs (ALSA, X11/Wayland). Behind the `overlay` feature so the headless
+# core still builds on boxes without them. Build the live app with: cargo build --features overlay
+winit = { version = "0.30", optional = true }
+softbuffer = { version = "0.4", optional = true }
+cpal = { version = "0.15", optional = true }
+tao = { version = "0.35.3", optional = true }
+wry = { version = "0.55.1", optional = true }
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+gtk = { version = "0.18", optional = true }
+ksni = { version = "0.3.5", features = ["blocking"], optional = true }
+
+[build-dependencies]
+winres = "0.1.12"
+
+[features]
+default = []
+overlay = ["dep:winit", "dep:softbuffer", "dep:cpal", "dep:gtk"]
+control-panel = ["overlay", "dep:tao", "dep:wry", "dep:ksni"]
+
+[profile.release]
+opt-level = 3

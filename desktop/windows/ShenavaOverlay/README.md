@@ -17,7 +17,7 @@ This build intentionally ships one Persian path:
 - Rust-native tract runtime plus Rust CTC beam final pass
 
 There is no model selector and no Vosk/ORT dependency in this package. Launch the app to open the same four-tab control surface as the macOS reference: Live, Display, Appearance, and About.
-When `koochik_hd.nnef.tgz` is present, the launcher uses it to skip tract's slow ONNX typing step; `koochik_hd.onnx` remains bundled as a fallback.
+The installer always ships the pinned, checksum-verified `koochik_hd.onnx` model. Shenava warms that model while the control panel opens, then reuses the same resident worker across Start/Stop actions.
 
 The app uses the shared Rust control panel plus the same native overlay surface as the macOS app: a transparent, always-on-top Persian caption strip positioned near the bottom center of the screen.
 

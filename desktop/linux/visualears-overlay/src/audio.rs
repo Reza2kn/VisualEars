@@ -15,9 +15,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use std::time::{Duration, Instant};
 #[cfg(not(target_os = "windows"))]
 use std::thread;
+use std::time::{Duration, Instant};
 
 pub struct Capture {
     _stream: Option<cpal::Stream>,
@@ -223,7 +223,11 @@ fn rms_level(samples: &[f32]) -> f32 {
     (samples.iter().map(|sample| sample * sample).sum::<f32>() / samples.len() as f32).sqrt()
 }
 
-fn report_audio_level(samples: &[f32], clock: &Instant, last_report: &std::sync::atomic::AtomicU64) {
+fn report_audio_level(
+    samples: &[f32],
+    clock: &Instant,
+    last_report: &std::sync::atomic::AtomicU64,
+) {
     if samples.is_empty() {
         return;
     }

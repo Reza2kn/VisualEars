@@ -8,7 +8,11 @@ use crate::engine::StreamingRecognizer;
 use crate::rescore::StaticRescorer;
 use crate::style::{CaptionAnimation, OverlayStyle};
 #[cfg(not(all(unix, not(target_os = "macos"))))]
+use std::io::BufRead;
+#[cfg(not(all(unix, not(target_os = "macos"))))]
 use std::num::NonZeroU32;
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -20,10 +24,6 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 #[cfg(not(all(unix, not(target_os = "macos"))))]
 use winit::window::{Icon, Window, WindowLevel};
-#[cfg(not(all(unix, not(target_os = "macos"))))]
-use std::io::BufRead;
-#[cfg(not(all(unix, not(target_os = "macos"))))]
-use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(not(all(unix, not(target_os = "macos"))))]
 const SHENAVA_ICON_PNG: &[u8] = include_bytes!("../assets/shenava-panel-logo.png");
@@ -252,17 +252,17 @@ impl ApplicationHandler for Overlay {
     }
 
     fn window_event(
-            &mut self,
-            el: &ActiveEventLoop,
-            _id: winit::window::WindowId,
-            event: WindowEvent,
-        ) {
-            match event {
-                WindowEvent::CloseRequested => el.exit(),
-                WindowEvent::RedrawRequested => self.draw(),
-                _ => {}
-            }
+        &mut self,
+        el: &ActiveEventLoop,
+        _id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        match event {
+            WindowEvent::CloseRequested => el.exit(),
+            WindowEvent::RedrawRequested => self.draw(),
+            _ => {}
         }
+    }
 
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
         el.set_control_flow(ControlFlow::wait_duration(Duration::from_millis(33)));
@@ -427,7 +427,9 @@ pub fn run_standby(
             }
         });
     }
-    eprintln!("[overlay] standby ready: model loaded, window hidden; awaiting show/hide/quit on stdin");
+    eprintln!(
+        "[overlay] standby ready: model loaded, window hidden; awaiting show/hide/quit on stdin"
+    );
     let event_loop = EventLoop::new()?;
     let mut app = Overlay {
         window: None,

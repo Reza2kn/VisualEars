@@ -14,7 +14,8 @@ fn main() {
         .set_icon(ICON)
         .set("ProductName", "Shenava")
         .set("FileDescription", "Shenava")
-        .set("ProductVersion", "0.1.0")
+        .set("FileVersion", "0.1.1")
+        .set("ProductVersion", "0.1.1")
         .set("OriginalFilename", "Shenava.exe")
         .set("InternalName", "Shenava");
     resource

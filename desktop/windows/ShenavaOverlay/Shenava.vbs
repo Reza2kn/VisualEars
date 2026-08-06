@@ -8,10 +8,7 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 
 root = fso.GetParentFolderName(WScript.ScriptFullName)
 exePath = fso.BuildPath(root, "Shenava.exe")
-modelPath = fso.BuildPath(root, "Models\ShenavaStreaming\koochik_hd.nnef.tgz")
-If Not fso.FileExists(modelPath) Then
-  modelPath = fso.BuildPath(root, "Models\ShenavaStreaming\koochik_hd.onnx")
-End If
+modelPath = fso.BuildPath(root, "Models\ShenavaStreaming\koochik_hd.onnx")
 tokensPath = fso.BuildPath(root, "Models\ShenavaStreaming\tokens.txt")
 melPath = fso.BuildPath(root, "engine\mel_filters_slaney_80x257.json")
 hotwordsPath = fso.BuildPath(root, "Models\ShenavaStreaming\hotwords_fa.txt")

@@ -58,10 +58,6 @@ Copy-Item (Join-Path $ScriptDir "Shenava.ico") (Join-Path $OutRoot "Shenava.ico"
 Copy-Item (Join-Path $ScriptDir "run.ps1") (Join-Path $OutRoot "run.ps1")
 Copy-Item (Join-Path $ScriptDir "README.md") (Join-Path $OutRoot "README.md")
 Copy-Item (Join-Path $ScriptDir "*.cmd") $OutRoot
-$PreoptModel = Join-Path $RepoRoot ".build\tract-preopt\koochik_hd.nnef.tgz"
-if (Test-Path $PreoptModel) {
-  Copy-Item $PreoptModel (Join-Path $OutRoot "Models\ShenavaStreaming\koochik_hd.nnef.tgz")
-}
 Copy-Item $ModelSource (Join-Path $OutRoot "Models\ShenavaStreaming\koochik_hd.onnx")
 Copy-Item (Join-Path $AssetRoot "tokens.txt") (Join-Path $OutRoot "Models\ShenavaStreaming\tokens.txt")
 Copy-Item (Join-Path $AssetRoot "hotwords_fa.txt") (Join-Path $OutRoot "Models\ShenavaStreaming\hotwords_fa.txt")

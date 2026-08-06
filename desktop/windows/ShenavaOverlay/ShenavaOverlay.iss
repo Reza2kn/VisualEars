@@ -7,7 +7,7 @@
 #endif
 
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.1.1"
 #endif
 
 #if (Defined(ARCH_X86) + Defined(ARCH_X64) + Defined(ARCH_ARM64)) != 1
@@ -35,6 +35,7 @@ AppId={{BDF31FA8-87A3-404A-B245-99850FB45867}
 AppName={#MyAppName}
 AppVersion={#AppVersion}
 AppVerName={#MyAppName} {#AppVersion} ({#ArchitectureLabel})
+UninstallDisplayName={#MyAppName}
 UninstallDisplayName={#MyAppName}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppUrl}

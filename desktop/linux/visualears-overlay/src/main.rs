@@ -18,6 +18,7 @@ use captioner::{LiveCaptioner, TranscriptState};
 use engine::StreamingRecognizer;
 use features::{load_mel_filters, FeatureExtractor};
 use rescore::StaticRescorer;
+#[cfg(feature = "overlay")]
 use style::{parse_style_args, OverlayStyle};
 
 fn build_recognizer(
@@ -541,7 +542,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(i) = args.iter().position(|a| a == "--export-nnef") {
         if args.len() >= i + 4 {
             let spec = model::named(&args[i + 1]);
-            return Ok(StreamingRecognizer::export_nnef_to_tar(&args[i + 2], &spec, f16, &args[i + 3])?);
+            return Ok(StreamingRecognizer::export_nnef_to_tar(
+                &args[i + 2],
+                &spec,
+                f16,
+                &args[i + 3],
+            )?);
         }
     }
     if let Some(i) = args.iter().position(|a| a == "--render-caption") {
@@ -549,6 +555,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return render_caption_test(&args[i + 1..i + 3]);
         }
     }
+    #[cfg(feature = "overlay")]
     let overlay_style: OverlayStyle = parse_style_args(&args);
     #[cfg(feature = "control-panel")]
     if let Some(i) = args.iter().position(|a| a == "--control") {
@@ -558,19 +565,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .position(|x| x == "--hotwords")
                 .and_then(|j| args.get(j + 1))
                 .cloned();
-            let model_url = args
-                .iter()
-                .position(|x| x == "--model-url")
-                .and_then(|j| args.get(j + 1))
-                .cloned()
-                .unwrap_or_else(|| control_panel::DEFAULT_MODEL_URL.to_string());
             return control_panel::run(control_panel::ControlArgs {
                 model_key: args[i + 1].clone(),
                 model_path: args[i + 2].clone(),
                 tokens_path: args[i + 3].clone(),
                 mel_path: args[i + 4].clone(),
                 hotwords_path: hotwords,
-                model_url,
             });
         }
     }
@@ -629,7 +629,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.iter().any(|a| a == "--list-audio") {
         return audio::list_input_devices();
     }
-    #[cfg(feature = "overlay")]
+    #[cfg(all(feature = "overlay", not(all(unix, not(target_os = "macos")))))]
     if let Some(i) = args.iter().position(|a| a == "--overlay-standby") {
         if args.len() >= i + 5 {
             let a = &args[i + 1..i + 5];
@@ -643,6 +643,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return window::run_standby(rec, rescorer, overlay_style, dev);
         }
     }
+    #[cfg(feature = "overlay")]
     if let Some(i) = args.iter().position(|a| a == "--overlay") {
         if args.len() >= i + 5 {
             let a = &args[i + 1..i + 5];
@@ -691,7 +692,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("  visualears-overlay --overlay      <model> <onnx> <tokens> <mel> [--hotwords hotwords_fa.txt]  # live mic overlay");
     eprintln!("  visualears-overlay --overlay-standby <model> <onnx> <tokens> <mel> [--device s]  # persist, hidden until 'show' on stdin");
     eprintln!("    style: [--animation slide|pop|karaoke|typewriter] [--vertical-position 0..1] [--visible-lines 1..4] [--font-size 38..92] [--max-width 0.5..0.94] [--shadow-blur 0..44] [--shadow-opacity 0..1] [--shadow-lift -12..18]");
-    eprintln!("  visualears-overlay --control      <model> <onnx> <tokens> <mel> [--hotwords hotwords_fa.txt] [--model-url URL]  # control panel");
+    eprintln!("  visualears-overlay --control      <model> <onnx> <tokens> <mel> [--hotwords hotwords_fa.txt]  # control panel");
     eprintln!("  visualears-overlay --overlay-demo \"<text>\"                         # show demo overlay window");
     eprintln!("  visualears-overlay --selftest     <model> <onnx> <tokens> <mel> <wav>      # headless CTC decode");
     eprintln!("  visualears-overlay --selftest-rnnt <model> <enc.onnx> <dec.onnx> <tokens> <mel> <wav>          # RNNT decode");

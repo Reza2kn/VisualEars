@@ -1,5 +1,5 @@
 use serde_json::Value;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 #[cfg(all(unix, not(target_os = "macos")))]
 use std::sync::LazyLock;
@@ -20,6 +20,8 @@ use wry::{http::Request, WebViewBuilder};
 enum OverlayChildKind {
     /// live warm model: hidden at launch, shown/hidden via stdin, never torn down between stops
     Standby,
+    /// live overlay without standby steering (Linux GTK path)
+    Live,
     /// fire-and-forget sample overlay (no model load, no readiness tracking)
     Demo,
 }
@@ -37,10 +39,6 @@ struct OverlayChild {
 
 #[cfg(all(unix, not(target_os = "macos")))]
 const LOGO_PNG: &[u8] = include_bytes!("../assets/visualears-logo.png");
-/// Default source for the streaming model when it is not already on disk. The packaged asset is
-/// the int4 Koochik build; this points at the tract-streaming family's primary exported graph.
-pub const DEFAULT_MODEL_URL: &str =
-    "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.0-tract-streaming/resolve/main/model.onnx";
 const PANEL_LOGO_PNG: &[u8] = include_bytes!("../assets/shenava-panel-logo.png");
 
 #[derive(Clone)]
@@ -50,7 +48,6 @@ pub struct ControlArgs {
     pub tokens_path: String,
     pub mel_path: String,
     pub hotwords_path: Option<String>,
-    pub model_url: String,
 }
 
 #[derive(Debug)]
@@ -58,10 +55,7 @@ enum UserEvent {
     Status(String, bool),
     Running(bool),
     AudioLevel(f64),
-    /// model download progress: (downloaded_bytes, total_bytes); total 0 = unknown length
-    DownloadProgress(u64, u64),
-    /// model download lifecycle: "downloading" | "done" | "failed"
-    DownloadState(String),
+    ModelUnavailable(String),
     /// the warm model child finished loading (unlocks the panel action buttons)
     ModelReady,
     ToggleAt(i32, i32),
@@ -146,27 +140,25 @@ pub fn run(args: ControlArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     let child: Arc<Mutex<Option<OverlayChild>>> = Arc::new(Mutex::new(None));
     let proxy = event_loop.create_proxy();
-    #[cfg(not(all(unix, not(target_os = "macos"))))]
-    {
-        // If the streaming model is not on disk, fetch it first (with live progress in the panel)
-        // and only start the warm recognizer once the download completes.
-        let model_path = std::path::Path::new(&args.model_path);
-        let missing = !model_path.exists()
-            || std::fs::metadata(model_path)
-                .map(|m| m.len() == 0)
-                .unwrap_or(true);
-        if missing && !args.model_url.is_empty() {
-            let _ = proxy.send_event(UserEvent::DownloadState("downloading".into()));
-            let dest = args.model_path.clone();
-            let url = args.model_url.clone();
-            let dl_proxy = proxy.clone();
-            std::thread::spawn(move || {
-                if let Err(err) = download_model(&url, std::path::Path::new(&dest), &dl_proxy) {
-                    let _ = dl_proxy.send_event(UserEvent::DownloadState(format!("failed: {err}")));
-                }
-            });
-        } else {
-            warm_spawn(&args, &child, &proxy);
+    // Release packages carry a pinned, hash-checked model. Never replace it at runtime from a
+    // mutable network URL (and never try to write beside an installed executable in Program Files).
+    let model_path = std::path::Path::new(&args.model_path);
+    let missing = !model_path.exists()
+        || std::fs::metadata(model_path)
+            .map(|m| m.len() == 0)
+            .unwrap_or(true);
+    if missing {
+        let _ = proxy.send_event(UserEvent::ModelUnavailable(format!(
+            "فایل مدل پیدا نشد؛ شنوا را دوباره نصب کنید. ({})",
+            args.model_path
+        )));
+    } else {
+        #[cfg(not(all(unix, not(target_os = "macos"))))]
+        warm_spawn(&args, &child, &proxy);
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            let _ = proxy.send_event(UserEvent::ModelReady);
+            let _ = proxy.send_event(UserEvent::Status("آماده برای شروع".into(), true));
         }
     }
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -296,23 +288,13 @@ pub fn run(args: ControlArgs) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = webview.evaluate_script(&js);
                 }
             }
-            Event::UserEvent(UserEvent::DownloadProgress(done, total)) => {
-                if let Some(webview) = webview.as_ref() {
-                    let js = format!("window.__shenavaDownloadProgress({}, {});", done, total);
-                    let _ = webview.evaluate_script(&js);
-                }
-            }
-            Event::UserEvent(UserEvent::DownloadState(st)) => {
+            Event::UserEvent(UserEvent::ModelUnavailable(message)) => {
                 if let Some(webview) = webview.as_ref() {
                     let js = format!(
-                        "window.__shenavaDownloadState({});",
-                        serde_json::to_string(&st).unwrap_or_else(|_| "\"downloading\"".to_string())
+                        "window.__shenavaModelUnavailable({});",
+                        serde_json::to_string(&message).unwrap_or_else(|_| "\"\"".to_string())
                     );
                     let _ = webview.evaluate_script(&js);
-                }
-                if st == "done" {
-                    #[cfg(not(all(unix, not(target_os = "macos"))))]
-                    warm_spawn(&args, &child, &proxy);
                 }
             }
             Event::UserEvent(UserEvent::ModelReady) => {
@@ -338,7 +320,6 @@ pub fn run(args: ControlArgs) -> Result<(), Box<dyn std::error::Error>> {
             _ => {}
         }
     });
-    eprintln!("[control] event loop exited");
     #[allow(unreachable_code)]
     Ok(())
 }
@@ -428,8 +409,18 @@ fn handle_ipc(
                 .and_then(Value::as_str)
                 .filter(|s| !s.trim().is_empty())
                 .unwrap_or("system");
+            let overlay_kind = if cfg!(all(unix, not(target_os = "macos"))) {
+                OverlayChildKind::Live
+            } else {
+                OverlayChildKind::Standby
+            };
+            let overlay_mode = if overlay_kind == OverlayChildKind::Live {
+                "--overlay"
+            } else {
+                "--overlay-standby"
+            };
             let mut argv = vec![
-                "--overlay-standby".to_string(),
+                overlay_mode.to_string(),
                 args.model_key.clone(),
                 args.model_path.clone(),
                 args.tokens_path.clone(),
@@ -458,12 +449,14 @@ fn handle_ipc(
                 if oc.ready {
                     let _ = oc.stdin.write_all(b"show\n");
                     let _ = oc.stdin.flush();
-                    let waiting =
-                        if device == "system" { "در انتظار صدای سیستم…" } else { "در انتظار صدا…" };
+                    let waiting = if device == "system" {
+                        "در انتظار صدای سیستم…"
+                    } else {
+                        "در انتظار صدا…"
+                    };
                     let _ = proxy.send_event(UserEvent::Status(waiting.into(), true));
                 } else {
-                    let _ =
-                        proxy.send_event(UserEvent::Status("در حال پردازش مدل…".into(), true));
+                    let _ = proxy.send_event(UserEvent::Status("در حال پردازش مدل…".into(), true));
                 }
             } else {
                 if let Some(mut old) = guard.take() {
@@ -479,7 +472,7 @@ fn handle_ipc(
                     ready: false,
                     want_visible: true,
                     argv,
-                    kind: OverlayChildKind::Standby,
+                    kind: overlay_kind,
                 });
                 let _ = proxy.send_event(UserEvent::Status("در حال پردازش مدل…".into(), true));
             }
@@ -588,7 +581,11 @@ fn map_device_choice(choice: &str) -> &str {
 }
 
 fn parse_audio_level_line(line: &str) -> Option<f64> {
-    let value: f64 = line.strip_prefix("[audio] level rms=")?.trim().parse().ok()?;
+    let value: f64 = line
+        .strip_prefix("[audio] level rms=")?
+        .trim()
+        .parse()
+        .ok()?;
     value.is_finite().then_some(value.clamp(0.0, 1.0))
 }
 
@@ -638,54 +635,6 @@ fn warm_spawn(
             }
         }
     }
-}
-
-/// Streaming model download with progress: writes to `<dest>.part`, renames into place on success.
-fn download_model(
-    url: &str,
-    dest: &std::path::Path,
-    proxy: &EventLoopProxy<UserEvent>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(std::time::Duration::from_secs(20))
-        .timeout(std::time::Duration::from_secs(3600))
-        .build();
-    let resp = agent.get(url).call()?;
-    let total = resp
-        .header("Content-Length")
-        .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(0);
-    let mut reader = resp.into_reader();
-    let tmp = dest.with_extension("part");
-    let mut out = std::fs::File::create(&tmp)?;
-    let mut done: u64 = 0;
-    let mut last_pct: u64 = 0;
-    let mut last_tick = std::time::Instant::now();
-    let mut buf = [0u8; 64 * 1024];
-    loop {
-        let n = reader.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        out.write_all(&buf[..n])?;
-        done += n as u64;
-        if total > 0 {
-            let pct = done * 100 / total;
-            if pct != last_pct {
-                last_pct = pct;
-                let _ = proxy.send_event(UserEvent::DownloadProgress(done, total));
-            }
-        } else if last_tick.elapsed().as_secs() >= 1 {
-            last_tick = std::time::Instant::now();
-            let _ = proxy.send_event(UserEvent::DownloadProgress(done, 0));
-        }
-    }
-    out.flush()?;
-    drop(out);
-    std::fs::rename(&tmp, dest)?;
-    let _ = proxy.send_event(UserEvent::DownloadProgress(done, if total > 0 { total } else { done }));
-    let _ = proxy.send_event(UserEvent::DownloadState("done".into()));
-    Ok(())
 }
 
 fn spawn_overlay_child(
@@ -905,14 +854,6 @@ button:active { transform: scale(.97); }
 .model-wait { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; color: #b35a2c; font-size: 10px; font-weight: 800; direction: rtl; }
 .model-spinner { width: 11px; height: 11px; border: 2px solid #e9cfb8; border-top-color: #78172b; border-radius: 50%; animation: model-spin .85s linear infinite; }
 @keyframes model-spin { to { transform: rotate(360deg); } }
-/* model-download progress section (shown only while the streaming model is being fetched) */
-.download { margin-top: 8px; background: var(--wash); border: 1px solid rgba(179,90,44,.35); border-radius: 8px; padding: 8px 10px; }
-.dl-title { color: #7a4a2b; font-size: 13px; font-weight: 900; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
-.dl-title #dlPct { color: var(--burgundy); font-variant-numeric: tabular-nums; direction: ltr; }
-.dl-bar { height: 10px; background: #e7ddd4; border-radius: 6px; overflow: hidden; }
-.dl-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #c9762f, var(--green)); transition: width .15s ease; }
-.dl-text { color: #6b5540; font-size: 11.5px; font-weight: 700; margin-top: 5px; line-height: 1.35; }
-.dl-text.err { color: #c0392b; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 label.cap { display: block; color: #4d4548; font-size: 13px; font-weight: 800; margin: 8px 0 4px; }
 select, button, input[type=range] { font: inherit; }
@@ -984,11 +925,6 @@ input[type=range] { accent-color: #b35a2c; direction: ltr; }
 </div>
 <section id="live" class="panel active">
   <div id="status" class="status" role="status" aria-live="polite"><span id="statusText" class="status-text">مدل در حال آماده‌سازی است؛ لطفاً صبر کنید…</span><span id="modelWait" class="model-wait"><span class="model-spinner"></span><span id="waitElapsed">۰ث</span></span><span class="voice-meter" aria-label="سطح ورودی صدا"><span class="voice-track"><span id="voiceFill" class="voice-fill"></span></span><span id="voiceLabel" class="voice-label">بدون داده</span></span></div>
-  <div id="download" class="download" hidden>
-    <div class="dl-title">دانلود مدل زبان <span id="dlPct">۰٪</span></div>
-    <div class="dl-bar"><div id="dlFill" class="dl-fill"></div></div>
-    <div class="dl-text" id="dlText">در حال دانلود مدل سخن‌گفتن…</div>
-  </div>
   <label class="cap" for="device">ورودی صدا</label>
   <select id="device" aria-label="ورودی صدا"><option value="system">صدای سیستم</option><option value="mic">میکروفون</option></select>
   <button class="primary" id="start" aria-label="شروع زیرنویس" disabled>شروع زیرنویس</button>
@@ -1051,7 +987,6 @@ window.__shenavaSetRunning=running=>{state.running=running;if(!running)state.mod
 const audioMeterFraction=rms=>Math.max(0,Math.min(1,(20*Math.log10(Math.max(rms,0.000001))+60)/60));
 window.__shenavaAudioLevel=rms=>{if(!Number.isFinite(rms)||rms<0)return;const active=rms>=0.0005;voiceFillEl.style.width=Math.round(audioMeterFraction(rms)*100)+'%';voiceFillEl.style.background=active?'#1faa41':'#d9892b';voiceLabelEl.textContent=active?'صدا':'ساکت';voiceLabelEl.style.color=active?'#15803d':'#8b6a66';lastAudioLevelAt=Date.now()};
 setInterval(()=>{if(lastAudioLevelAt&&Date.now()-lastAudioLevelAt>900){voiceFillEl.style.width='0%';voiceLabelEl.textContent='بدون داده';voiceLabelEl.style.color='#8b6a66';}},300);
-const dlEl=document.getElementById('download');const dlFill=document.getElementById('dlFill');const dlPct=document.getElementById('dlPct');const dlText=document.getElementById('dlText');
 const panelButtons=['start','demo','stop','sample'].map(id=>document.getElementById(id));
 let locked=true;
 function setLocked(v){locked=v;panelButtons.forEach(b=>{b.disabled=v});}
@@ -1060,15 +995,7 @@ const modelWaitStartedAt=Date.now();
 const refreshModelWait=()=>{const seconds=Math.floor((Date.now()-modelWaitStartedAt)/1000);waitElapsedEl.textContent=faDigits(seconds)+'ث'};
 refreshModelWait();
 setInterval(refreshModelWait,1000);
-window.__shenavaDownloadState=st=>{
-  if(st==='downloading'){dlEl.hidden=false;dlPct.textContent='۰٪';dlFill.style.width='0%';dlText.textContent='در حال دانلود مدل سخن‌گفتن…';dlText.classList.remove('err');setLocked(true);}
-  else if(st==='done'){dlEl.hidden=true;setLocked(true);} /* keep locked until the model is loaded */
-  else if(st.startsWith('failed')){dlText.textContent='دانلود ناموفق: '+(st.slice(7)||'خطا');dlText.classList.add('err');dlEl.hidden=false;modelWaitEl.hidden=true;setLocked(false);}
-};
-window.__shenavaDownloadProgress=(done,total)=>{
-  if(total>0){const pct=Math.round(done/total*100);dlFill.style.width=pct+'%';dlPct.textContent=faDigits(pct)+'٪';const mb=Math.round(done/1048576);const tmb=Math.round(total/1048576);dlText.textContent='در حال دانلود مدل‌… '+faDigits(mb)+' از '+faDigits(tmb)+' مگابایت؛ پس از تکمیل، آماده شوید.';}
-  else {const mb=Math.round(done/1048576);dlText.textContent='در حال دانلود مدل‌… '+faDigits(mb)+' مگابایت دریافت شد.';}
-};
+window.__shenavaModelUnavailable=m=>{modelWaitEl.hidden=true;setLocked(true);window.__shenavaSetStatus(m,false)};
 window.__shenavaModelReady=()=>{modelWaitEl.hidden=true;setLocked(false)};
 </script>
 </body>
@@ -1101,7 +1028,10 @@ mod tests {
             parse_audio_level_line("[audio] level rms=0.01234"),
             Some(0.01234)
         );
-        assert_eq!(parse_audio_level_line("[audio] signal detected rms=0.00216"), None);
+        assert_eq!(
+            parse_audio_level_line("[audio] signal detected rms=0.00216"),
+            None
+        );
         assert_eq!(parse_audio_level_line("[audio] level rms=bad"), None);
     }
 

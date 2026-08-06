@@ -157,11 +157,7 @@ impl StreamingRecognizer {
     /// Shared model-build stage. A raw `.onnx` must be parsed, typed and (optionally) f16-converted
     /// - a slow, minute-scale pass - while a pre-optimized decluttered `.nnef.tar` skips all of it.
     /// `f16` conversion is applied here, so an exported NNEF is already in the target precision.
-    fn build_typed_model(
-        m: &ShenavaModel,
-        model_path: &str,
-        f16: bool,
-    ) -> TractResult<TypedModel> {
+    fn build_typed_model(m: &ShenavaModel, model_path: &str, f16: bool) -> TractResult<TypedModel> {
         let (nl, dm, chunk) = (m.num_layers, m.d_model, m.chunk_frames);
         let is_nnef = model_path.ends_with(".nnef.tar")
             || model_path.ends_with(".nnef.tgz")
@@ -232,7 +228,10 @@ impl StreamingRecognizer {
         let enc_idx = resolve_enc_outputs(&output_names(&typed))?;
         eprintln!("[model] building optimized runnable…");
         let model = typed.into_optimized()?.into_runnable()?;
-        eprintln!("[model] ready in {:.1}s", t_load_start.elapsed().as_secs_f32());
+        eprintln!(
+            "[model] ready in {:.1}s",
+            t_load_start.elapsed().as_secs_f32()
+        );
         let (nl, dm, _chunk) = (m.num_layers, m.d_model, m.chunk_frames);
         let (clc, clt, clcl) = zero_caches(nl, dm, f16)?;
         let (h, c) = zero_pred_state()?;

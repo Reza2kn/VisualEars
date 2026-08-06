@@ -1,6 +1,6 @@
 [package]
 name = "visualears-overlay"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Shenava live Persian captions — cross-platform native tract engine."
 build = "build.rs"
@@ -8,7 +8,7 @@ build = "build.rs"
 [package.metadata.winres]
 FileDescription = "Shenava"
 ProductName = "Shenava"
-ProductVersion = "0.1.0"
+ProductVersion = "0.1.1"
 OriginalFilename = "Shenava.exe"
 InternalName = "Shenava"
 
@@ -35,7 +35,6 @@ softbuffer = { version = "0.4", optional = true }
 cpal = { version = "0.15", optional = true }
 tao = { version = "0.35.3", optional = true }
 wry = { version = "0.55.1", optional = true }
-ureq = { version = "=2.12.1", optional = true, default-features = false, features = ["tls"] }
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 gtk = { version = "0.18", optional = true }
@@ -47,7 +46,7 @@ winres = "0.1.12"
 [features]
 default = []
 overlay = ["dep:winit", "dep:softbuffer", "dep:cpal", "dep:gtk"]
-control-panel = ["overlay", "dep:tao", "dep:wry", "dep:ksni", "dep:ureq"]
+control-panel = ["overlay", "dep:tao", "dep:wry", "dep:ksni"]
 
 [profile.release]
 opt-level = 3

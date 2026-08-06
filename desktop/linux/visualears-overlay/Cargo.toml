@@ -1,5 +1,5 @@
 [package]
-name = "visualears-overlay"
+name = "shenava"
 version = "0.1.1"
 edition = "2021"
 description = "Shenava live Persian captions — cross-platform native tract engine."
@@ -13,7 +13,7 @@ OriginalFilename = "Shenava.exe"
 InternalName = "Shenava"
 
 [[bin]]
-name = "visualears-overlay"
+name = "shenava"
 path = "src/main.rs"
 
 [dependencies]

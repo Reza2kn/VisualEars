@@ -689,15 +689,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     eprintln!("usage:");
-    eprintln!("  visualears-overlay --overlay      <model> <onnx> <tokens> <mel> [--hotwords hotwords_fa.txt]  # live mic overlay");
-    eprintln!("  visualears-overlay --overlay-standby <model> <onnx> <tokens> <mel> [--device s]  # persist, hidden until 'show' on stdin");
+    eprintln!("  shenava --overlay      <model> <onnx> <tokens> <mel> [--hotwords hotwords_fa.txt]  # live mic overlay");
+    eprintln!("  shenava --overlay-standby <model> <onnx> <tokens> <mel> [--device s]  # persist, hidden until 'show' on stdin");
     eprintln!("    style: [--animation slide|pop|karaoke|typewriter] [--vertical-position 0..1] [--visible-lines 1..4] [--font-size 38..92] [--max-width 0.5..0.94] [--shadow-blur 0..44] [--shadow-opacity 0..1] [--shadow-lift -12..18]");
-    eprintln!("  visualears-overlay --control      <model> <onnx> <tokens> <mel> [--hotwords hotwords_fa.txt]  # control panel");
-    eprintln!("  visualears-overlay --overlay-demo \"<text>\"                         # show demo overlay window");
-    eprintln!("  visualears-overlay --selftest     <model> <onnx> <tokens> <mel> <wav>      # headless CTC decode");
-    eprintln!("  visualears-overlay --selftest-rnnt <model> <enc.onnx> <dec.onnx> <tokens> <mel> <wav>          # RNNT decode");
-    eprintln!("  visualears-overlay --batch-rnnt   <model> <enc.onnx> <dec.onnx> <tokens> <mel> <manifest> <out.json>  # RNNT batch");
-    eprintln!("  visualears-overlay --replay-live  <model> <onnx> <tokens> <mel> <wav>      # headless caption timeline");
-    eprintln!("  visualears-overlay --render-caption \"<text>\" <out.png>                     # headless render test");
+    eprintln!("  shenava --control      <model> <onnx> <tokens> <mel> [--hotwords hotwords_fa.txt]  # control panel");
+    eprintln!(
+        "  shenava --overlay-demo \"<text>\"                         # show demo overlay window"
+    );
+    eprintln!(
+        "  shenava --selftest     <model> <onnx> <tokens> <mel> <wav>      # headless CTC decode"
+    );
+    eprintln!("  shenava --selftest-rnnt <model> <enc.onnx> <dec.onnx> <tokens> <mel> <wav>          # RNNT decode");
+    eprintln!("  shenava --batch-rnnt   <model> <enc.onnx> <dec.onnx> <tokens> <mel> <manifest> <out.json>  # RNNT batch");
+    eprintln!("  shenava --replay-live  <model> <onnx> <tokens> <mel> <wav>      # headless caption timeline");
+    eprintln!("  shenava --render-caption \"<text>\" <out.png>                     # headless render test");
     Ok(())
 }

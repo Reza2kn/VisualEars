@@ -268,7 +268,7 @@ try {
 }
 
 $ProfileDir = $Configuration.ToLowerInvariant()
-$BuiltExe = Join-Path $OverlayCrate "target\$Target\$ProfileDir\visualears-overlay.exe"
+$BuiltExe = Join-Path $OverlayCrate "target\$Target\$ProfileDir\shenava.exe"
 if (!(Test-Path $BuiltExe -PathType Leaf)) {
   throw "Cargo completed without producing the expected executable: $BuiltExe"
 }

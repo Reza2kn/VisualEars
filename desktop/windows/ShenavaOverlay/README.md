@@ -2,13 +2,13 @@
 
 Native Windows setup installers and portable packages for Shenava.
 
-> **Contributor status (August 2026): live captions need debugging.** The x64
-> app installs and launches, its caption renderer works, and WASAPI loopback
-> opens and detects a non-zero audio signal. The product owner nevertheless
-> sees no live subtitles in either Microphone or System Audio mode. This is an
-> open functional bug, not a completed Windows release. See
-> [CONTRIBUTING.md](CONTRIBUTING.md) for the exact reproduction and evidence
-> requested from Windows contributors.
+> **Release status (August 5, 2026): live captions restored.** A contributor
+> verified Persian captions from a physical Realtek microphone and the default
+> Windows System Audio loopback. The exact x64 release package was also
+> installed on the project VM and produced Persian partial and final captions
+> from the bundled deterministic speech fixture. The cloud VM exposes no
+> microphone endpoint, so the physical-microphone result remains contributor
+> hardware evidence rather than a simulated VM test.
 
 This build intentionally ships one Persian path:
 

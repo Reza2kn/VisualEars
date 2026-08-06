@@ -1,25 +1,28 @@
 # Contributing to Shenava for Windows
 
-Thank you for helping make live Persian captions work on Windows. The immediate
-goal is narrow: establish where the live pipeline stops after audio capture and
-submit the smallest evidence-backed fix.
+Thank you for helping keep live Persian captions reliable on Windows. Preserve
+the evidence matrix below when changing capture, model loading, decoding, or the
+native overlay, and submit the smallest evidence-backed fix.
 
-## Known failure
+## Verification status
 
-As of August 4, 2026:
+As of August 5, 2026:
 
-- the x64 installer installs and launches without a visible console;
-- the WebView2 control panel and native caption window open;
-- `RenderSmoke.cmd` produces a shaped Persian caption image;
-- WASAPI system loopback opens as `Remote Audio` on the test VM;
-- an injected tone reaches capture and logs a non-zero RMS signal;
-- the product owner still sees no live subtitles in either Microphone or
-  System Audio mode;
+- the original no-caption report was traced to a silent, roughly 103–112 second
+  ONNX warm-up on the contributor's Windows machine;
+- the control panel now reports model progress and keeps one warm caption worker
+  alive across Start/Stop actions;
+- a physical Realtek microphone produced RMS activity and visible Persian
+  captions on contributor hardware;
+- default Windows System Audio loopback produced visible Persian captions on
+  contributor hardware;
+- the exact packaged x64 release installs as Shenava and emits Persian partial
+  and final captions from its bundled speech fixture;
 - the cloud VM has no microphone input device, so it cannot serve as proof that
   microphone capture works on a normal Windows machine.
 
-Do not close the bug based on a window opening, a render smoke image, or an
-audio-signal log alone. A real spoken phrase must appear in the overlay.
+Do not treat a window opening, a render smoke image, or an audio-signal log alone
+as live-caption proof. A real spoken phrase must appear in the overlay.
 
 ## Fresh-clone setup
 

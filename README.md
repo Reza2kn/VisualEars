@@ -27,17 +27,20 @@ This is one of those rare startup adventures where you'll actually be rooting fo
 - 🎨 **Creative Minds**: Your flair for design can shape the way we see communication.
 - 📢 **Advocates**: Spread the word, be the echo of this movement.
 
-## Windows contributors wanted
+## Shenava for Windows
 
 The Shenava Windows app is now available as source under
 [`desktop/windows/ShenavaOverlay`](desktop/windows/ShenavaOverlay). The native
 Rust caption engine shared by that package lives under
 [`desktop/linux/visualears-overlay`](desktop/linux/visualears-overlay).
 
-The current Windows build launches but does not yet produce live subtitles in
-the product owner's Microphone or System Audio tests. If you have a real
-Windows 10/11 machine, start with the focused
-[Windows contributor guide](desktop/windows/ShenavaOverlay/CONTRIBUTING.md).
+The Windows app now warms a reusable caption worker while its control panel is
+open instead of silently loading the model after Start. Live Persian captions
+have been verified with both a physical microphone and Windows System Audio on
+contributor hardware; the packaged x64 release has also been installed and
+verified with its deterministic Persian speech fixture. See the focused
+[Windows contributor guide](desktop/windows/ShenavaOverlay/CONTRIBUTING.md) for
+the validation matrix and build instructions.
 
 ## 📞 Let's Connect
 
